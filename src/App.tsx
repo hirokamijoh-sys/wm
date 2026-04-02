@@ -303,7 +303,10 @@ export default function App() {
         </div>
       </header>
 
-      <main className="flex-1 grid grid-cols-1 lg:grid-cols-[1fr_384px] overflow-y-auto lg:overflow-hidden bg-slate-50/30">
+      <main className={cn(
+        "flex-1 overflow-y-auto lg:overflow-hidden bg-slate-50/30",
+        image && "grid grid-cols-1 lg:grid-cols-[1fr_384px]"
+      )}>
         {/* Canvas Area */}
         <section className={cn(
           "flex flex-col items-center relative order-1",
@@ -415,8 +418,8 @@ export default function App() {
                 </div>
 
                 <div className="flex flex-col items-center gap-3">
-                  <p className="text-[10px] text-slate-400 font-bold flex items-center gap-2 tracking-widest">
-                    <CheckCircle2 className="w-3 h-3 text-emerald-500" />
+                  <p className="text-[13px] text-slate-400 font-bold flex items-center gap-2 tracking-widest">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-500" />
                     画像はブラウザ内で処理されます • サーバーへは送信されません
                   </p>
                 </div>
