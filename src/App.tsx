@@ -24,7 +24,6 @@ import {
   Check
 } from 'lucide-react';
 import { cn } from './lib/utils';
-import confetti from 'canvas-confetti';
 
 interface WatermarkSettings {
   opacity: number;
@@ -233,12 +232,6 @@ export default function App() {
       link.href = canvasRef.current!.toDataURL('image/png');
       link.click();
       setIsProcessing(false);
-      confetti({
-        particleCount: 100,
-        spread: 70,
-        origin: { y: 0.6 },
-        colors: ['#0ea5e9', '#6366f1', '#a855f7']
-      });
     }, 800);
   };
 
@@ -511,21 +504,8 @@ export default function App() {
                     </p>
                   </div>
                 </section>
-              </div>
-            </motion.aside>
-          )}
-        </AnimatePresence>
 
-        {/* Appearance & Position Controls (Order 3 - below sidebar on mobile, below canvas on desktop) */}
-        <AnimatePresence>
-          {image && (
-            <motion.div 
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="order-3 p-6 md:p-8 bg-slate-50/50"
-            >
-              <div className="w-full max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-8 pb-12">
-                <section className="space-y-6 bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm">
+                <section className="pt-8 border-t border-slate-100 space-y-6">
                   <h2 className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
                     <Settings className="w-4 h-4" /> Appearance
                   </h2>
@@ -559,17 +539,17 @@ export default function App() {
                         className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-sky-600"
                       />
                     </div>
-                    <div className="grid grid-cols-2 gap-6">
+                    <div className="grid grid-cols-2 gap-4">
                       <div>
                         <label className="text-xs font-bold text-slate-600 block mb-3">Color</label>
-                        <div className="flex gap-3">
+                        <div className="flex gap-2">
                           <button 
                             onClick={() => setSettings({...settings, color: '#000000'})}
-                            className={cn("w-8 h-8 rounded-full bg-black border-2 transition-all", settings.color === '#000000' ? "border-sky-500 scale-110" : "border-transparent")}
+                            className={cn("w-7 h-7 rounded-full bg-black border-2 transition-all", settings.color === '#000000' ? "border-sky-500 scale-110" : "border-transparent")}
                           />
                           <button 
                             onClick={() => setSettings({...settings, color: '#ffffff'})}
-                            className={cn("w-8 h-8 rounded-full bg-white border-2 transition-all", settings.color === '#ffffff' ? "border-sky-500 scale-110" : "border-slate-200")}
+                            className={cn("w-7 h-7 rounded-full bg-white border-2 transition-all", settings.color === '#ffffff' ? "border-sky-500 scale-110" : "border-slate-200")}
                           />
                         </div>
                       </div>
@@ -586,8 +566,8 @@ export default function App() {
                   </div>
                 </section>
 
-                <section className="space-y-6 bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm">
-                  <h2 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-5 flex items-center gap-2">
+                <section className="pt-8 border-t border-slate-100 space-y-6">
+                  <h2 className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
                     <Layers className="w-4 h-4" /> Position
                   </h2>
                   <div className="grid grid-cols-2 gap-2">
@@ -608,7 +588,7 @@ export default function App() {
                   </div>
                 </section>
               </div>
-            </motion.div>
+            </motion.aside>
           )}
         </AnimatePresence>
       </main>
