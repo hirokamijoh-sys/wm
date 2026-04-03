@@ -21,9 +21,20 @@ import {
   Lock,
   Scale,
   FileText,
-  Check
+  Check,
+  Share2,
+  Twitter,
+  Facebook,
+  Link as LinkIcon,
+  Copy
 } from 'lucide-react';
 import { cn } from './lib/utils';
+
+const XIcon = ({ className }: { className?: string }) => (
+  <svg viewBox="0 0 24 24" aria-hidden="true" className={className} fill="currentColor">
+    <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+  </svg>
+);
 
 interface WatermarkSettings {
   opacity: number;
@@ -43,11 +54,13 @@ const TAG_OPTIONS = [
 export default function App() {
   const [image, setImage] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string>('');
+  const [fileType, setFileType] = useState<string>('image/png');
   const [isProcessing, setIsProcessing] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [showPolicy, setShowPolicy] = useState(false);
   const [customText, setCustomText] = useState('');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [copied, setCopied] = useState(false);
   
   const [settings, setSettings] = useState<WatermarkSettings>({
     opacity: 0.5,
@@ -80,6 +93,7 @@ export default function App() {
 
   const processFile = (file: File) => {
     setFileName(file.name);
+    setFileType(file.type || 'image/png');
     const reader = new FileReader();
     reader.onload = (event) => {
       setImage(event.target?.result as string);
@@ -229,10 +243,19 @@ export default function App() {
     setTimeout(() => {
       const link = document.createElement('a');
       link.download = `protected_${fileName}`;
-      link.href = canvasRef.current!.toDataURL('image/png');
+      // Use the original file type to maintain format and reduce file size (especially for JPEGs)
+      const mimeType = fileType === 'image/jpeg' ? 'image/jpeg' : 'image/png';
+      const quality = mimeType === 'image/jpeg' ? 0.92 : undefined;
+      link.href = canvasRef.current!.toDataURL(mimeType, quality);
       link.click();
       setIsProcessing(false);
     }, 800);
+  };
+
+  const handleCopyLink = () => {
+    navigator.clipboard.writeText(window.location.href);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
   const toggleTag = (id: string) => {
@@ -268,17 +291,65 @@ export default function App() {
     <div className="min-h-screen flex flex-col bg-white text-slate-900">
       {/* Header */}
       <header className="px-6 py-4 flex items-center justify-between glass sticky top-0 z-50">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-sky-600 rounded-xl flex items-center justify-center shadow-lg shadow-sky-600/20">
-            <Shield className="text-white w-6 h-6" />
+        <div className="flex flex-col">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-sky-600 rounded-xl flex items-center justify-center shadow-lg shadow-sky-600/20">
+              <Shield className="text-white w-6 h-6" />
+            </div>
+            <div>
+              <h1 className="text-xl font-bold tracking-tight gradient-text">ウォーターマークくん｜かんたん透かし作成</h1>
+              <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">AI & Copyright Protection</p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-xl font-bold tracking-tight gradient-text">CreatorShield</h1>
-            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">AI & Copyright Protection</p>
-          </div>
+          <p className="mt-2 text-xs text-slate-500 font-medium hidden md:block max-w-2xl">
+            大切な作品を無断転載等から守るための権利表記つきウォーターマーク（透かし）作成の無料ツールです。
+          </p>
         </div>
         
         <div className="flex items-center gap-3">
+          <div className="hidden sm:flex items-center gap-2 mr-4">
+            <button
+              onClick={() => window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent('ウォーターマークくん｜かんたん透かし作成 - 大切なイラストや画像をAI学習や無断転載から守るツール')}&url=${encodeURIComponent(window.location.href)}`, '_blank')}
+              className="p-2 text-slate-400 hover:text-slate-900 transition-colors"
+              title="X で共有"
+            >
+              <XIcon className="w-5 h-5" />
+            </button>
+            <button
+              onClick={() => window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(window.location.href)}`, '_blank')}
+              className="p-2 text-slate-400 hover:text-blue-600 transition-colors"
+              title="Facebook で共有"
+            >
+              <Facebook className="w-5 h-5" />
+            </button>
+            <button
+              onClick={handleCopyLink}
+              className="p-2 text-slate-400 hover:text-emerald-600 transition-colors relative"
+              title="リンクをコピー"
+            >
+              <AnimatePresence mode="wait">
+                {copied ? (
+                  <motion.div
+                    key="check"
+                    initial={{ scale: 0.5, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    exit={{ scale: 0.5, opacity: 0 }}
+                  >
+                    <Check className="w-5 h-5 text-emerald-500" />
+                  </motion.div>
+                ) : (
+                  <motion.div
+                    key="link"
+                    initial={{ scale: 0.5, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    exit={{ scale: 0.5, opacity: 0 }}
+                  >
+                    <LinkIcon className="w-5 h-5" />
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </button>
+          </div>
           {image && (
             <button
               onClick={handleDownload}
@@ -314,7 +385,21 @@ export default function App() {
                 exit={{ opacity: 0, scale: 0.95 }}
                 className="w-full max-w-2xl"
               >
-                <label className="group relative block w-full aspect-video rounded-[2.5rem] border-2 border-dashed border-slate-200 hover:border-sky-400 bg-white hover:bg-sky-50/30 transition-all cursor-pointer overflow-hidden card-shadow">
+                <label 
+                  className="group relative block w-full aspect-video rounded-[2.5rem] border-2 border-dashed border-slate-200 hover:border-sky-400 bg-white hover:bg-sky-50/30 transition-all cursor-pointer overflow-hidden card-shadow"
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const file = e.dataTransfer.files?.[0];
+                    if (file && file.type.startsWith('image/')) {
+                      processFile(file);
+                    }
+                  }}
+                >
                   <input
                     type="file"
                     ref={fileInputRef}
@@ -593,29 +678,6 @@ export default function App() {
         </AnimatePresence>
       </main>
       
-      <footer className="bg-white border-t border-slate-100 py-8 px-6">
-        <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-6">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 bg-sky-600 rounded-lg flex items-center justify-center text-white shadow-md">
-              <Shield className="w-5 h-5" />
-            </div>
-            <span className="text-lg font-black text-slate-900 tracking-tighter">CreatorShield</span>
-          </div>
-          
-          <div className="flex items-center gap-8">
-            <button 
-              onClick={() => setShowPolicy(true)}
-              className="text-xs font-bold text-slate-400 hover:text-sky-600 transition-colors uppercase tracking-widest"
-            >
-              Privacy Policy
-            </button>
-            <p className="text-xs font-bold text-slate-300 uppercase tracking-widest">
-              © 2024 CreatorShield
-            </p>
-          </div>
-        </div>
-      </footer>
-
       {/* Privacy Policy Modal */}
       <AnimatePresence>
         {showPolicy && (
@@ -706,7 +768,7 @@ export default function App() {
               <Shield className="w-4 h-4 text-sky-600" /> AI学習から作品を守る
             </h3>
             <p className="text-xs text-slate-500 leading-relaxed font-medium">
-              CreatorShieldは、イラストレーターや写真家の大切な作品を無断AI学習から守るための無料ツールです。画像に「AI学習禁止」や「無断転載禁止」の透かし（ウォーターマーク）を簡単に入れることができます。
+              ウォーターマークくんは、イラストレーターや写真家の大切な作品を無断AI学習から守るための無料ツールです。画像に「AI学習禁止」や「無断転載禁止」の透かし（ウォーターマーク）を簡単に入れることができます。
             </p>
           </div>
           <div className="space-y-4">
@@ -722,7 +784,7 @@ export default function App() {
               <Scale className="w-4 h-4 text-amber-600" /> 著作権法への対応
             </h3>
             <p className="text-xs text-slate-500 leading-relaxed font-medium">
-              著作権法第67条（裁定制度）における「権利者不明」扱いを防ぐため、明確な権利者情報を画像に埋め込むことが重要です。CreatorShieldは、法的な意思表示を強力にサポートします。
+              著作権法第67条（裁定制度）における「権利者不明」扱いを防ぐため、明確な権利者情報を画像に埋め込むことが重要です。ウォーターマークくんは、法的な意思表示を強力にサポートします。
             </p>
           </div>
         </div>
@@ -743,13 +805,58 @@ export default function App() {
         </div>
       </section>
 
-      {/* Footer */}
-      <footer className="px-8 py-8 border-t border-slate-100 flex flex-col items-center gap-6 text-[11px] text-slate-400 font-bold tracking-widest">
-        <div className="flex flex-wrap items-center justify-center gap-x-12 gap-y-4">
-          <span className="flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" /> SYSTEM SECURE</span>
-          <span>ENGINE: CANVAS_V3.0_LIGHT</span>
-          <button onClick={() => setShowPolicy(true)} className="hover:text-sky-600 transition-colors">PRIVACY & TERMS</button>
-          <span>© 2026 CREATORSHIELD SUITE</span>
+      <footer className="bg-white border-t border-slate-100 py-12 px-6">
+        <div className="max-w-7xl mx-auto">
+          <div className="flex flex-col md:flex-row items-center justify-between gap-8 mb-8">
+            <div className="flex flex-col items-center md:items-start gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 bg-sky-600 rounded-lg flex items-center justify-center text-white shadow-md">
+                  <Shield className="w-5 h-5" />
+                </div>
+                <span className="text-lg font-black text-slate-900 tracking-tighter">ウォーターマークくん</span>
+              </div>
+              <p className="text-xs text-slate-400 font-medium max-w-md text-center md:text-left">
+                大切な作品を無断転載等から守るための権利表記つきウォーターマーク（透かし）作成の無料ツールです。
+              </p>
+            </div>
+            
+            <div className="flex flex-col items-center md:items-end gap-4">
+              <div className="flex items-center gap-4">
+                <button
+                  onClick={() => window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent('ウォーターマークくん｜かんたん透かし作成 - 大切なイラストや画像をAI学習や無断転載から守るツール')}&url=${encodeURIComponent(window.location.href)}`, '_blank')}
+                  className="flex items-center gap-2 px-4 py-2 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 rounded-full text-xs font-bold transition-all border border-slate-100"
+                >
+                  <XIcon className="w-4 h-4" />
+                  Xで共有
+                </button>
+                <button
+                  onClick={() => window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(window.location.href)}`, '_blank')}
+                  className="flex items-center gap-2 px-4 py-2 bg-slate-50 hover:bg-blue-50 text-slate-600 hover:text-blue-600 rounded-full text-xs font-bold transition-all border border-slate-100"
+                >
+                  <Facebook className="w-4 h-4" />
+                  Facebook
+                </button>
+                <button
+                  onClick={handleCopyLink}
+                  className="flex items-center gap-2 px-4 py-2 bg-slate-50 hover:bg-emerald-50 text-slate-600 hover:text-emerald-600 rounded-full text-xs font-bold transition-all border border-slate-100"
+                >
+                  {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                  {copied ? 'コピー完了' : 'リンクをコピー'}
+                </button>
+              </div>
+              <div className="flex items-center gap-8">
+                <button 
+                  onClick={() => setShowPolicy(true)}
+                  className="text-xs font-bold text-slate-400 hover:text-sky-600 transition-colors uppercase tracking-widest"
+                >
+                  Privacy Policy
+                </button>
+                <p className="text-xs font-bold text-slate-300 uppercase tracking-widest">
+                  © 2024 ウォーターマークくん
+                </p>
+              </div>
+            </div>
+          </div>
         </div>
       </footer>
     </div>
