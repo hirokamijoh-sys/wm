@@ -852,7 +852,7 @@ export default function App() {
                   Privacy Policy
                 </button>
                 <p className="text-xs font-bold text-slate-300 uppercase tracking-widest">
-                  © 2024 ウォーターマークくん
+                  © 2026 ウォーターマークくん
                 </p>
               </div>
             </div>
