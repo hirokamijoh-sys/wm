@@ -46,9 +46,9 @@ interface WatermarkSettings {
 }
 
 const TAG_OPTIONS = [
-  { id: 'no-ai', label: 'AI学習禁止', text: '© DO NOT TRAIN / AI学習禁止' },
-  { id: 'no-repost', label: '無断転載禁止', text: '© NO REPOST / 無断転載禁止' },
-  { id: 'arbitration', label: '裁定制度対策', text: '著作権法第67条（裁定制度）に基づく利用は承諾しません。\n利用をご希望の際は、必ず事前にご連絡ください。' },
+  { id: 'no-ai', label: 'AI学習禁止', text: 'DO NOT TRAIN / AI学習禁止' },
+  { id: 'no-repost', label: '無断転載禁止', text: 'NO REPOST / 無断転載禁止' },
+  { id: 'arbitration', label: '裁定制度対策', text: 'いかなる裁定制度に基づく利用も承諾しません。' },
 ];
 
 export default function App() {
@@ -145,8 +145,8 @@ export default function App() {
           ctx.fillStyle = settings.color;
           
           const fontSize = (settings.size / 1000) * canvas.width;
-          const lineHeight = fontSize * 1.6; 
-          ctx.font = `bold ${fontSize}px "Inter", "Hiragino Sans", sans-serif`;
+          const lineHeight = fontSize * 1.3; 
+          ctx.font = `bold ${fontSize}px "Inter", "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Meiryo", sans-serif`;
           ctx.textBaseline = 'middle';
 
           // Add text shadow for better contrast on varied backgrounds
@@ -179,7 +179,16 @@ export default function App() {
             
             textParts.forEach((line, index) => {
               const offset = (textParts.length - 1 - index) * lineHeight;
-              ctx.fillText(line, 0, -offset);
+              const metrics = ctx.measureText(line);
+              // Visual alignment adjustment for trailing punctuation (like "。")
+              // actualBoundingBoxRight is the distance from the anchor to the right edge of the ink.
+              // In right alignment, the anchor is at the right edge of the advance width.
+              // So actualBoundingBoxRight is usually 0 or negative.
+              const visualAdjustment = (metrics.actualBoundingBoxRight !== undefined && metrics.actualBoundingBoxRight < 0) 
+                ? -metrics.actualBoundingBoxRight 
+                : 0;
+              
+              ctx.fillText(line, visualAdjustment, -offset);
             });
             ctx.restore();
           } else if (settings.position === 'bottom-left') {
@@ -543,16 +552,15 @@ export default function App() {
                     </div>
                     
                     <div className="space-y-2">
-                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">著作権者明示</label>
-                      <input
-                        type="text"
+                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">著作権者の名前、問い合わせ先または連絡先等ご自由に記載ください。</label>
+                      <textarea
                         value={customText}
                         onChange={(e) => {
                           setCustomText(e.target.value);
                           if (e.target.value.trim() !== '') setShowPreview(true);
                         }}
-                        className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 transition-all shadow-sm"
-                        placeholder="著作権者名等"
+                        className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 transition-all shadow-sm min-h-[120px] resize-none"
+                        placeholder="例：© 2026 Taro Yamada\nContact: example@email.com"
                       />
                     </div>
                   </div>
@@ -656,7 +664,7 @@ export default function App() {
                     <Layers className="w-4 h-4" /> Position
                   </h2>
                   <div className="grid grid-cols-2 gap-2">
-                    {(['tile', 'center', 'bottom-right', 'bottom-left'] as const).map((pos) => (
+                    {(['tile', 'center', 'bottom-left', 'bottom-right'] as const).map((pos) => (
                       <button
                         key={pos}
                         onClick={() => setSettings({ ...settings, position: pos })}
@@ -735,7 +743,7 @@ export default function App() {
                       <Scale className="w-5 h-5 text-emerald-500" /> 3. 著作権法と裁定制度への対応
                     </h3>
                     <p className="text-sm font-medium">
-                      著作権法第67条（裁定制度）において、「権利者不明」とみなされることを防ぐため、画像内に明確な権利者情報を記載することを推奨しています。本ツールは、法的保護を受けるための意思表示（裁定制度対策）を支援します。
+                      新たな裁定制度（未管理著作物等の利用）などによる意図しない無断利用を防ぐには、画像上に「利用を許諾しない」という明確な意思表示をすることが最も重要です。ウォーターマークくんは、あなたの作品と権利を守る法的な意思表示の埋め込みを強力にサポートします。
                     </p>
                   </section>
 
@@ -784,7 +792,7 @@ export default function App() {
               <Scale className="w-4 h-4 text-amber-600" /> 著作権法への対応
             </h3>
             <p className="text-xs text-slate-500 leading-relaxed font-medium">
-              著作権法第67条（裁定制度）における「権利者不明」扱いを防ぐため、明確な権利者情報を画像に埋め込むことが重要です。ウォーターマークくんは、法的な意思表示を強力にサポートします。
+              新たな裁定制度（未管理著作物等の利用）などによる意図しない無断利用を防ぐには、画像上に「利用を許諾しない」という明確な意思表示をすることが最も重要です。ウォーターマークくんは、法的な意思表示を強力にサポートします。
             </p>
           </div>
         </div>
@@ -852,7 +860,7 @@ export default function App() {
                   Privacy Policy
                 </button>
                 <p className="text-xs font-bold text-slate-300 uppercase tracking-widest">
-                  © 2026 ウォーターマークくん
+                  © 2026 かみじょーひろ
                 </p>
               </div>
             </div>
