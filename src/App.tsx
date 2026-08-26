@@ -26,7 +26,8 @@ import {
   Twitter,
   Facebook,
   Link as LinkIcon,
-  Copy
+  Copy,
+  Home
 } from 'lucide-react';
 import { cn } from './lib/utils';
 
@@ -316,7 +317,15 @@ export default function App() {
         </div>
         
         <div className="flex items-center gap-3">
-          <div className="hidden sm:flex items-center gap-2 mr-4">
+          <a
+            href="https://www.kamijohiro.net/"
+            className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-slate-600 hover:text-sky-600 bg-slate-100 hover:bg-sky-50 rounded-xl transition-all border border-slate-200/80 shadow-xs"
+            title="ホーム（kamijohiro.net）に戻る"
+          >
+            <Home className="w-3.5 h-3.5" />
+            <span>ホームへ戻る</span>
+          </a>
+          <div className="hidden sm:flex items-center gap-2 mr-2">
             <button
               onClick={() => window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent('ウォーターマークくん｜かんたん透かし作成 - 大切なイラストや画像をAI学習や無断転載から守るツール')}&url=${encodeURIComponent(window.location.href)}`, '_blank')}
               className="p-2 text-slate-400 hover:text-slate-900 transition-colors"
@@ -796,21 +805,6 @@ export default function App() {
             </p>
           </div>
         </div>
-
-        {/* AdSense Placeholder (Moved to bottom for better UX) */}
-        <div className="max-w-4xl mx-auto mt-16">
-          <div className="w-full h-32 bg-slate-50 rounded-[2rem] border border-slate-100 flex flex-col items-center justify-center p-6 text-center">
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 bg-slate-200 rounded-full flex items-center justify-center">
-                <span className="text-[8px] font-bold text-slate-400">AD</span>
-              </div>
-              <div>
-                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Advertisement</p>
-                <p className="text-[10px] text-slate-400">ここにGoogle AdSenseの広告が表示されます。</p>
-              </div>
-            </div>
-          </div>
-        </div>
       </section>
 
       <footer className="bg-white border-t border-slate-100 py-12 px-6">
@@ -852,7 +846,14 @@ export default function App() {
                   {copied ? 'コピー完了' : 'リンクをコピー'}
                 </button>
               </div>
-              <div className="flex items-center gap-8">
+              <div className="flex items-center gap-6">
+                <a
+                  href="https://www.kamijohiro.net/"
+                  className="text-xs font-bold text-slate-500 hover:text-sky-600 transition-colors flex items-center gap-1"
+                >
+                  <Home className="w-3.5 h-3.5" />
+                  <span>ホームへ戻る</span>
+                </a>
                 <button 
                   onClick={() => setShowPolicy(true)}
                   className="text-xs font-bold text-slate-400 hover:text-sky-600 transition-colors uppercase tracking-widest"
