@@ -62,6 +62,10 @@ export default function App() {
   const [customText, setCustomText] = useState('');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [copied, setCopied] = useState(false);
+  const [savedImageUrl, setSavedImageUrl] = useState<string | null>(null);
+  const [savedImageBlob, setSavedImageBlob] = useState<Blob | null>(null);
+  const [showSaveModal, setShowSaveModal] = useState(false);
+  const [canWebShare, setCanWebShare] = useState(false);
   
   const [settings, setSettings] = useState<WatermarkSettings>({
     opacity: 0.5,
@@ -74,6 +78,7 @@ export default function App() {
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const loadedImgRef = useRef<HTMLImageElement | null>(null);
 
   // Derive final text parts from tags and custom input
   const getFinalTextParts = () => {
@@ -97,147 +102,151 @@ export default function App() {
     setFileType(file.type || 'image/png');
     const reader = new FileReader();
     reader.onload = (event) => {
-      setImage(event.target?.result as string);
-      setShowPreview(false); // Start with original image as suggested by user
+      const dataUrl = event.target?.result as string;
+      setImage(dataUrl);
+      setShowPreview(true);
+      // Default to selecting AI学習禁止 if nothing selected yet
+      setSelectedTags(prev => prev.length === 0 ? ['no-ai'] : prev);
+
+      const img = new Image();
+      if (!dataUrl.startsWith('data:')) {
+        img.crossOrigin = "anonymous";
+      }
+      img.onload = () => {
+        loadedImgRef.current = img;
+        drawWatermark();
+      };
+      img.src = dataUrl;
     };
     reader.readAsDataURL(file);
   };
 
   const drawWatermark = () => {
-    if (!image || !canvasRef.current) return;
+    if (!canvasRef.current) return;
+
+    const img = loadedImgRef.current;
+    if (!img) {
+      if (image) {
+        const newImg = new Image();
+        if (!image.startsWith('data:')) {
+          newImg.crossOrigin = "anonymous";
+        }
+        newImg.onload = () => {
+          loadedImgRef.current = newImg;
+          drawWatermark();
+        };
+        newImg.src = image;
+      }
+      return;
+    }
 
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
     if (!ctx) return;
 
-    const img = new Image();
-    // Use crossOrigin only for non-data URLs to avoid issues with local files
-    if (!image.startsWith('data:')) {
-      img.crossOrigin = "anonymous";
-    }
+    // Set dimensions (this also resets the context state)
+    canvas.width = img.naturalWidth || img.width;
+    canvas.height = img.naturalHeight || img.height;
+
+    // Ensure context state is clean
+    ctx.globalAlpha = 1.0;
+    ctx.shadowBlur = 0;
+    ctx.shadowColor = 'transparent';
+    ctx.filter = 'none';
+    ctx.globalCompositeOperation = 'source-over';
+
+    // Draw the base image
+    ctx.drawImage(img, 0, 0);
+
+    const textParts = getFinalTextParts();
     
-    img.onload = () => {
-      // Use a small timeout to ensure the DOM is fully ready and the canvas is mounted
-      setTimeout(() => {
-        if (!canvasRef.current) return;
-        const canvas = canvasRef.current;
-        const ctx = canvas.getContext('2d', { willReadFrequently: true });
-        if (!ctx) return;
+    if (textParts.length > 0) {
+      // Set styles for watermark with exact opacity
+      ctx.globalAlpha = Math.max(0.01, Math.min(1.0, settings.opacity));
+      ctx.fillStyle = settings.color;
+      
+      const fontSize = (settings.size / 1000) * canvas.width;
+      const lineHeight = fontSize * 1.3; 
+      ctx.font = `bold ${fontSize}px "Inter", "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Meiryo", sans-serif`;
+      ctx.textBaseline = 'middle';
+
+      // Shadow alpha scales directly with opacity so low opacity text is genuinely translucent
+      const shadowAlpha = (settings.color === '#ffffff' ? 0.35 : 0.45) * settings.opacity;
+      ctx.shadowColor = settings.color === '#ffffff' ? `rgba(0,0,0,${shadowAlpha})` : `rgba(255,255,255,${shadowAlpha})`;
+      ctx.shadowBlur = (fontSize / 3) * Math.min(1, settings.opacity * 1.5);
+
+      const drawTextBlock = (x: number, y: number, align: CanvasTextAlign = 'center') => {
+        ctx.save();
+        ctx.textAlign = align;
+        ctx.translate(x, y);
+        ctx.rotate((settings.rotation * Math.PI) / 180);
         
-        // Set dimensions (this also resets the context state)
-        canvas.width = img.width;
-        canvas.height = img.height;
-
-        // Ensure context state is clean
-        ctx.globalAlpha = 1.0;
-        ctx.shadowBlur = 0;
-        ctx.shadowColor = 'transparent';
-        ctx.filter = 'none';
-        ctx.globalCompositeOperation = 'source-over';
-
-        // Draw the base image
-        ctx.drawImage(img, 0, 0);
-
-        const textParts = getFinalTextParts();
+        textParts.forEach((line, index) => {
+          const offset = (index - (textParts.length - 1) / 2) * lineHeight;
+          ctx.fillText(line, 0, offset);
+        });
         
-        if (textParts.length > 0) {
-          // Set styles for watermark
-          ctx.globalAlpha = settings.opacity;
-          ctx.fillStyle = settings.color;
+        ctx.restore();
+      };
+
+      if (settings.position === 'center') {
+        drawTextBlock(canvas.width / 2, canvas.height / 2);
+      } else if (settings.position === 'bottom-right') {
+        const padding = canvas.width * 0.05;
+        ctx.save();
+        ctx.textAlign = 'right';
+        ctx.textBaseline = 'bottom';
+        ctx.translate(canvas.width - padding, canvas.height - padding);
+        ctx.rotate((Math.min(0, settings.rotation) * Math.PI) / 180); 
+        
+        textParts.forEach((line, index) => {
+          const offset = (textParts.length - 1 - index) * lineHeight;
+          const metrics = ctx.measureText(line);
+          const visualAdjustment = (metrics.actualBoundingBoxRight !== undefined && metrics.actualBoundingBoxRight < 0) 
+            ? -metrics.actualBoundingBoxRight 
+            : 0;
           
-          const fontSize = (settings.size / 1000) * canvas.width;
-          const lineHeight = fontSize * 1.3; 
-          ctx.font = `bold ${fontSize}px "Inter", "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Meiryo", sans-serif`;
-          ctx.textBaseline = 'middle';
-
-          // Add text shadow for better contrast on varied backgrounds
-          ctx.shadowColor = settings.color === '#ffffff' ? 'rgba(0,0,0,0.4)' : 'rgba(255,255,255,0.5)';
-          ctx.shadowBlur = fontSize / 3;
-
-          const drawTextBlock = (x: number, y: number, align: CanvasTextAlign = 'center') => {
-            ctx.save();
-            ctx.textAlign = align;
-            ctx.translate(x, y);
-            ctx.rotate((settings.rotation * Math.PI) / 180);
-            
-            textParts.forEach((line, index) => {
-              const offset = (index - (textParts.length - 1) / 2) * lineHeight;
-              ctx.fillText(line, 0, offset);
-            });
-            
-            ctx.restore();
-          };
-
-          if (settings.position === 'center') {
-            drawTextBlock(canvas.width / 2, canvas.height / 2);
-          } else if (settings.position === 'bottom-right') {
-            const padding = canvas.width * 0.05;
-            ctx.save();
-            ctx.textAlign = 'right';
-            ctx.textBaseline = 'bottom';
-            ctx.translate(canvas.width - padding, canvas.height - padding);
-            ctx.rotate((Math.min(0, settings.rotation) * Math.PI) / 180); 
-            
-            textParts.forEach((line, index) => {
-              const offset = (textParts.length - 1 - index) * lineHeight;
-              const metrics = ctx.measureText(line);
-              // Visual alignment adjustment for trailing punctuation (like "。")
-              // actualBoundingBoxRight is the distance from the anchor to the right edge of the ink.
-              // In right alignment, the anchor is at the right edge of the advance width.
-              // So actualBoundingBoxRight is usually 0 or negative.
-              const visualAdjustment = (metrics.actualBoundingBoxRight !== undefined && metrics.actualBoundingBoxRight < 0) 
-                ? -metrics.actualBoundingBoxRight 
-                : 0;
-              
-              ctx.fillText(line, visualAdjustment, -offset);
-            });
-            ctx.restore();
-          } else if (settings.position === 'bottom-left') {
-            const padding = canvas.width * 0.05;
-            ctx.save();
-            ctx.textAlign = 'left';
-            ctx.textBaseline = 'bottom';
-            ctx.translate(padding, canvas.height - padding);
-            ctx.rotate((Math.max(0, settings.rotation) * Math.PI) / 180); 
-            
-            textParts.forEach((line, index) => {
-              const offset = (textParts.length - 1 - index) * lineHeight;
-              ctx.fillText(line, 0, -offset);
-            });
-            ctx.restore();
-          } else if (settings.position === 'tile') {
-            // Measure text to calculate safe spacing
-            const metrics = textParts.map(line => ctx.measureText(line));
-            const maxWidth = Math.max(...metrics.map(m => m.width), 100);
-            const totalHeight = textParts.length * lineHeight;
-            
-            // More compact spacing to prevent overlap but not be too sparse
-            const stepX = Math.max(canvas.width * 0.3, maxWidth * 1.3);
-            const stepY = Math.max(canvas.height * 0.3, totalHeight * 2.0);
-            
-            for (let x = stepX / 4; x < canvas.width + stepX; x += stepX) {
-              for (let y = stepY / 4; y < canvas.height + stepY; y += stepY) {
-                drawTextBlock(x, y);
-              }
-            }
+          ctx.fillText(line, visualAdjustment, -offset);
+        });
+        ctx.restore();
+      } else if (settings.position === 'bottom-left') {
+        const padding = canvas.width * 0.05;
+        ctx.save();
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'bottom';
+        ctx.translate(padding, canvas.height - padding);
+        ctx.rotate((Math.max(0, settings.rotation) * Math.PI) / 180); 
+        
+        textParts.forEach((line, index) => {
+          const offset = (textParts.length - 1 - index) * lineHeight;
+          ctx.fillText(line, 0, -offset);
+        });
+        ctx.restore();
+      } else if (settings.position === 'tile') {
+        // Measure text to calculate safe spacing
+        const metrics = textParts.map(line => ctx.measureText(line));
+        const maxWidth = Math.max(...metrics.map(m => m.width), 100);
+        const totalHeight = textParts.length * lineHeight;
+        
+        // Compact spacing to prevent overlap but not be too sparse
+        const stepX = Math.max(canvas.width * 0.3, maxWidth * 1.3);
+        const stepY = Math.max(canvas.height * 0.3, totalHeight * 2.0);
+        
+        for (let x = stepX / 4; x < canvas.width + stepX; x += stepX) {
+          for (let y = stepY / 4; y < canvas.height + stepY; y += stepY) {
+            drawTextBlock(x, y);
           }
         }
+      }
+    }
 
-        if (settings.addNoAiTag) {
-          ctx.globalAlpha = 0.015;
-          for (let i = 0; i < 300; i++) {
-            ctx.fillStyle = i % 2 === 0 ? '#000' : '#fff';
-            ctx.fillRect(Math.random() * canvas.width, Math.random() * canvas.height, 1, 1);
-          }
-        }
-      }, 50);
-    };
-    
-    img.onerror = () => {
-      console.error("Failed to load image for canvas");
-    };
-    
-    img.src = image;
+    if (settings.addNoAiTag) {
+      ctx.globalAlpha = 0.015;
+      for (let i = 0; i < 300; i++) {
+        ctx.fillStyle = i % 2 === 0 ? '#000' : '#fff';
+        ctx.fillRect(Math.random() * canvas.width, Math.random() * canvas.height, 1, 1);
+      }
+    }
   };
 
   React.useLayoutEffect(() => {
@@ -246,20 +255,139 @@ export default function App() {
     }
   }, [image, settings, selectedTags, customText, showPreview]);
 
-  const handleDownload = () => {
+  const handleDownload = async () => {
     if (!canvasRef.current) return;
-    
     setIsProcessing(true);
-    setTimeout(() => {
-      const link = document.createElement('a');
-      link.download = `protected_${fileName}`;
-      // Use the original file type to maintain format and reduce file size (especially for JPEGs)
-      const mimeType = fileType === 'image/jpeg' ? 'image/jpeg' : 'image/png';
-      const quality = mimeType === 'image/jpeg' ? 0.92 : undefined;
-      link.href = canvasRef.current!.toDataURL(mimeType, quality);
-      link.click();
+
+    const canvas = canvasRef.current;
+    const mimeType = fileType === 'image/jpeg' ? 'image/jpeg' : 'image/png';
+    const quality = mimeType === 'image/jpeg' ? 0.95 : undefined;
+    const extension = mimeType === 'image/jpeg' ? 'jpg' : 'png';
+    const baseName = (fileName || 'artwork').replace(/\.[^/.]+$/, '');
+    const exportFileName = `protected_${baseName}.${extension}`;
+
+    // Detect touch / iOS / iPadOS
+    const isIOSorIPad = 
+      /iPad|iPhone|iPod/.test(navigator.userAgent) || 
+      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+    canvas.toBlob(async (blob) => {
+      if (!blob) {
+        // Fallback for edge cases where toBlob is unavailable
+        try {
+          const dataUrl = canvas.toDataURL(mimeType, quality);
+          setSavedImageUrl(dataUrl);
+          const link = document.createElement('a');
+          link.download = exportFileName;
+          link.href = dataUrl;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          setShowSaveModal(true);
+        } catch (e) {
+          console.error("DataURL download error:", e);
+        }
+        setIsProcessing(false);
+        return;
+      }
+
+      const url = URL.createObjectURL(blob);
+      setSavedImageUrl(url);
+      setSavedImageBlob(blob);
+
+      const file = new File([blob], exportFileName, { type: mimeType });
+      const canShareFile = typeof navigator !== 'undefined' && 
+        !!navigator.canShare && 
+        navigator.canShare({ files: [file] });
+      
+      setCanWebShare(canShareFile);
+
+      let shareInvoked = false;
+      // On iOS / iPadOS, invoke native share sheet directly for instant "Save to Photos"
+      if (canShareFile && isIOSorIPad) {
+        try {
+          await navigator.share({
+            files: [file],
+            title: exportFileName,
+            text: 'ウォーターマークくん で透かしを入れた画像',
+          });
+          shareInvoked = true;
+        } catch (err: any) {
+          if (err.name !== 'AbortError') {
+            console.warn("Share sheet dismissed or unsupported:", err);
+          }
+        }
+      }
+
+      // If not shared or on desktop/other browsers, trigger standard direct file download
+      if (!shareInvoked) {
+        try {
+          const link = document.createElement('a');
+          link.download = exportFileName;
+          link.href = url;
+          link.rel = 'noopener';
+          document.body.appendChild(link);
+          link.click();
+          setTimeout(() => {
+            if (document.body.contains(link)) {
+              document.body.removeChild(link);
+            }
+          }, 500);
+        } catch (err) {
+          console.error("Direct download click error:", err);
+        }
+      }
+
+      // Always show the save modal on iPad, iPhone, and touch devices for guaranteed long-press access
+      if (isIOSorIPad || 'ontouchstart' in window) {
+        setShowSaveModal(true);
+      }
+
       setIsProcessing(false);
-    }, 800);
+    }, mimeType, quality);
+  };
+
+  const handleShareSavedImage = async () => {
+    if (!savedImageBlob) return;
+    const mimeType = fileType === 'image/jpeg' ? 'image/jpeg' : 'image/png';
+    const extension = mimeType === 'image/jpeg' ? 'jpg' : 'png';
+    const baseName = (fileName || 'artwork').replace(/\.[^/.]+$/, '');
+    const exportFileName = `protected_${baseName}.${extension}`;
+    const file = new File([savedImageBlob], exportFileName, { type: mimeType });
+
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      try {
+        await navigator.share({
+          files: [file],
+          title: exportFileName,
+          text: 'ウォーターマークくん で透かしを入れた画像',
+        });
+      } catch (err: any) {
+        if (err.name !== 'AbortError') {
+          console.error("Share error:", err);
+        }
+      }
+    }
+  };
+
+  const handleDirectDownloadFromModal = () => {
+    if (!savedImageUrl) return;
+    const mimeType = fileType === 'image/jpeg' ? 'image/jpeg' : 'image/png';
+    const extension = mimeType === 'image/jpeg' ? 'jpg' : 'png';
+    const baseName = (fileName || 'artwork').replace(/\.[^/.]+$/, '');
+    const exportFileName = `protected_${baseName}.${extension}`;
+
+    const link = document.createElement('a');
+    link.download = exportFileName;
+    link.href = savedImageUrl;
+    link.rel = 'noopener';
+    document.body.appendChild(link);
+    link.click();
+    setTimeout(() => {
+      if (document.body.contains(link)) {
+        document.body.removeChild(link);
+      }
+    }, 500);
   };
 
   const handleCopyLink = () => {
@@ -283,10 +411,16 @@ export default function App() {
   };
 
   const reset = () => {
+    if (savedImageUrl && savedImageUrl.startsWith('blob:')) {
+      URL.revokeObjectURL(savedImageUrl);
+    }
     setImage(null);
     setFileName('');
     setCustomText('');
     setSelectedTags([]);
+    setSavedImageUrl(null);
+    setSavedImageBlob(null);
+    setShowSaveModal(false);
     setSettings(prev => ({ ...prev, addNoAiTag: false }));
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
@@ -619,11 +753,14 @@ export default function App() {
                       </div>
                       <input
                         type="range"
-                        min="0.1"
+                        min="0.05"
                         max="1"
                         step="0.05"
                         value={settings.opacity}
-                        onChange={(e) => setSettings({ ...settings, opacity: parseFloat(e.target.value) })}
+                        onChange={(e) => {
+                          setSettings(prev => ({ ...prev, opacity: parseFloat(e.target.value) }));
+                          setShowPreview(true);
+                        }}
                         className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-sky-600"
                       />
                     </div>
@@ -637,7 +774,10 @@ export default function App() {
                         min="10"
                         max="200"
                         value={settings.size}
-                        onChange={(e) => setSettings({ ...settings, size: parseInt(e.target.value) })}
+                        onChange={(e) => {
+                          setSettings(prev => ({ ...prev, size: parseInt(e.target.value) }));
+                          setShowPreview(true);
+                        }}
                         className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-sky-600"
                       />
                     </div>
@@ -646,11 +786,17 @@ export default function App() {
                         <label className="text-xs font-bold text-slate-600 block mb-3">Color</label>
                         <div className="flex gap-2">
                           <button 
-                            onClick={() => setSettings({...settings, color: '#000000'})}
+                            onClick={() => {
+                              setSettings(prev => ({ ...prev, color: '#000000' }));
+                              setShowPreview(true);
+                            }}
                             className={cn("w-7 h-7 rounded-full bg-black border-2 transition-all", settings.color === '#000000' ? "border-sky-500 scale-110" : "border-transparent")}
                           />
                           <button 
-                            onClick={() => setSettings({...settings, color: '#ffffff'})}
+                            onClick={() => {
+                              setSettings(prev => ({ ...prev, color: '#ffffff' }));
+                              setShowPreview(true);
+                            }}
                             className={cn("w-7 h-7 rounded-full bg-white border-2 transition-all", settings.color === '#ffffff' ? "border-sky-500 scale-110" : "border-slate-200")}
                           />
                         </div>
@@ -660,7 +806,10 @@ export default function App() {
                         <input
                           type="number"
                           value={settings.rotation}
-                          onChange={(e) => setSettings({ ...settings, rotation: parseInt(e.target.value) })}
+                          onChange={(e) => {
+                            setSettings(prev => ({ ...prev, rotation: parseInt(e.target.value) || 0 }));
+                            setShowPreview(true);
+                          }}
                           className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-sky-500 shadow-sm"
                         />
                       </div>
@@ -676,7 +825,10 @@ export default function App() {
                     {(['tile', 'center', 'bottom-left', 'bottom-right'] as const).map((pos) => (
                       <button
                         key={pos}
-                        onClick={() => setSettings({ ...settings, position: pos })}
+                        onClick={() => {
+                          setSettings(prev => ({ ...prev, position: pos }));
+                          setShowPreview(true);
+                        }}
                         className={cn(
                           "px-2 py-3 rounded-xl text-[10px] font-bold border transition-all shadow-sm",
                           settings.position === pos 
@@ -771,6 +923,93 @@ export default function App() {
                     了解しました
                   </button>
                 </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Save & Download Complete Modal (iPad/iOS & Mobile Optimized) */}
+      <AnimatePresence>
+        {showSaveModal && savedImageUrl && (
+          <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 md:p-6">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowSaveModal(false)}
+              className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 15 }}
+              className="relative w-full max-w-lg bg-white rounded-[2.5rem] shadow-2xl overflow-hidden border border-slate-100 p-6 md:p-8 max-h-[92vh] flex flex-col z-10"
+            >
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-emerald-100 rounded-2xl flex items-center justify-center text-emerald-600 shadow-xs">
+                    <CheckCircle2 className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold text-slate-900 leading-tight">画像の準備が完了しました！</h3>
+                    <p className="text-xs text-slate-500 font-medium">透かし・保護処理が適用されました</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowSaveModal(false)}
+                  className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-400 hover:text-slate-700"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+
+              {/* Generated Image Preview (Allow long-press to save on iPad/iOS) */}
+              <div className="relative rounded-2xl overflow-hidden bg-slate-50 border border-slate-200 flex items-center justify-center my-2 p-2 max-h-[38vh]">
+                <img
+                  src={savedImageUrl}
+                  alt="Protected Preview"
+                  className="w-full h-full max-h-[35vh] object-contain rounded-xl select-all"
+                />
+              </div>
+
+              {/* iPad / iPhone Tip Callout */}
+              <div className="p-3.5 bg-sky-50/80 rounded-2xl border border-sky-100 my-3">
+                <div className="flex items-start gap-2.5">
+                  <span className="text-base leading-none mt-0.5">💡</span>
+                  <p className="text-xs text-sky-950 leading-relaxed font-medium">
+                    <strong className="font-bold text-sky-900">iPad / iPhone をご利用の場合：</strong><br />
+                    上の画像を<span className="text-sky-700 font-bold underline decoration-sky-400">長押し</span>して<strong>「写真に追加」</strong>または<strong>「画像を保存」</strong>を選択すると、直接カメラロールへ保存できます。
+                  </p>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="space-y-2.5 mt-auto pt-2">
+                {canWebShare && (
+                  <button
+                    onClick={handleShareSavedImage}
+                    className="w-full py-3.5 px-4 bg-sky-600 hover:bg-sky-700 text-white text-sm font-bold rounded-xl flex items-center justify-center gap-2 transition-all shadow-md shadow-sky-600/20 active:scale-[0.99]"
+                  >
+                    <Share2 className="w-4 h-4" />
+                    <span>写真 / ファイルに保存（共有メニューを開く）</span>
+                  </button>
+                )}
+
+                <button
+                  onClick={handleDirectDownloadFromModal}
+                  className="w-full py-3 px-4 bg-slate-900 hover:bg-black text-white text-sm font-bold rounded-xl flex items-center justify-center gap-2 transition-all shadow-sm active:scale-[0.99]"
+                >
+                  <Download className="w-4 h-4" />
+                  <span>ファイルをダウンロード</span>
+                </button>
+
+                <button
+                  onClick={() => setShowSaveModal(false)}
+                  className="w-full py-2 text-xs text-slate-500 hover:text-slate-800 font-bold transition-colors text-center"
+                >
+                  閉じる
+                </button>
               </div>
             </motion.div>
           </div>
