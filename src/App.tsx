@@ -103,18 +103,18 @@ export default function App() {
     const reader = new FileReader();
     reader.onload = (event) => {
       const dataUrl = event.target?.result as string;
-      setImage(dataUrl);
-      setShowPreview(true);
-      // Default to selecting AI学習禁止 if nothing selected yet
-      setSelectedTags(prev => prev.length === 0 ? ['no-ai'] : prev);
-
       const img = new Image();
       if (!dataUrl.startsWith('data:')) {
         img.crossOrigin = "anonymous";
       }
       img.onload = () => {
         loadedImgRef.current = img;
-        drawWatermark();
+        setImage(dataUrl);
+        setShowPreview(true);
+        setSelectedTags(prev => prev.length === 0 ? ['no-ai'] : prev);
+        setTimeout(() => {
+          drawWatermark();
+        }, 10);
       };
       img.src = dataUrl;
     };
@@ -122,18 +122,19 @@ export default function App() {
   };
 
   const hexToRgba = (hex: string, alpha: number) => {
-    const cleanHex = hex.replace('#', '');
+    let cleanHex = hex.replace('#', '').trim();
     let r = 0, g = 0, b = 0;
+    if (cleanHex.length === 3) {
+      cleanHex = cleanHex.split('').map(c => c + c).join('');
+    }
     if (cleanHex.length === 6) {
-      r = parseInt(cleanHex.substring(0, 2), 16);
-      g = parseInt(cleanHex.substring(2, 4), 16);
-      b = parseInt(cleanHex.substring(4, 6), 16);
-    } else if (cleanHex.length === 3) {
-      r = parseInt(cleanHex[0] + cleanHex[0], 16);
-      g = parseInt(cleanHex[1] + cleanHex[1], 16);
-      b = parseInt(cleanHex[2] + cleanHex[2], 16);
-    } else if (hex === '#ffffff' || hex === 'white') {
+      r = parseInt(cleanHex.substring(0, 2), 16) || 0;
+      g = parseInt(cleanHex.substring(2, 4), 16) || 0;
+      b = parseInt(cleanHex.substring(4, 6), 16) || 0;
+    } else if (hex === 'white' || hex === '#fff' || hex === '#ffffff') {
       r = 255; g = 255; b = 255;
+    } else if (hex === 'black' || hex === '#000' || hex === '#000000') {
+      r = 0; g = 0; b = 0;
     }
     const safeAlpha = Math.max(0.01, Math.min(1.0, alpha));
     return `rgba(${r}, ${g}, ${b}, ${safeAlpha})`;
@@ -165,7 +166,7 @@ export default function App() {
     const width = img.naturalWidth || img.width;
     const height = img.naturalHeight || img.height;
 
-    // Set dimensions
+    // Set dimensions if different
     if (canvas.width !== width || canvas.height !== height) {
       canvas.width = width;
       canvas.height = height;
@@ -187,26 +188,18 @@ export default function App() {
     const textParts = getFinalTextParts();
     
     if (textParts.length > 0) {
-      const safeOpacity = Math.max(0.02, Math.min(1.0, settings.opacity));
+      const safeOpacity = Math.max(0.01, Math.min(1.0, Number(settings.opacity) || 0.5));
       const fontSize = (settings.size / 1000) * canvas.width;
       const lineHeight = fontSize * 1.3; 
 
-      // Apply opacity directly via rgba fillStyle (Safari/iOS compatible) as well as globalAlpha
-      ctx.globalAlpha = safeOpacity;
-      ctx.fillStyle = settings.color;
+      // Apply opacity directly via rgba fillStyle (100% Safari/iOS CoreGraphics compatible)
+      ctx.globalAlpha = 1.0;
+      ctx.fillStyle = hexToRgba(settings.color, safeOpacity);
+      ctx.shadowColor = 'transparent';
+      ctx.shadowBlur = 0;
       
       ctx.font = `bold ${fontSize}px "Inter", "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Meiryo", sans-serif`;
       ctx.textBaseline = 'middle';
-
-      // Shadow setup: disabled at low opacities to avoid dark solid halos on Safari
-      if (safeOpacity > 0.25) {
-        const shadowAlpha = (settings.color === '#ffffff' ? 0.3 : 0.35) * safeOpacity;
-        ctx.shadowColor = settings.color === '#ffffff' ? `rgba(0,0,0,${shadowAlpha})` : `rgba(255,255,255,${shadowAlpha})`;
-        ctx.shadowBlur = Math.min(6, (fontSize / 4) * safeOpacity);
-      } else {
-        ctx.shadowColor = 'transparent';
-        ctx.shadowBlur = 0;
-      }
 
       const drawTextBlock = (x: number, y: number, align: CanvasTextAlign = 'center') => {
         ctx.save();
@@ -284,9 +277,13 @@ export default function App() {
     }
   };
 
-  React.useLayoutEffect(() => {
+  React.useEffect(() => {
     if (image) {
-      drawWatermark();
+      // Use requestAnimationFrame for reliable DOM canvas rendering
+      const reqId = requestAnimationFrame(() => {
+        drawWatermark();
+      });
+      return () => cancelAnimationFrame(reqId);
     }
   }, [image, settings, selectedTags, customText, showPreview]);
 
@@ -644,7 +641,12 @@ export default function App() {
                     </div>
 
                     <canvas
-                      ref={canvasRef}
+                      ref={(el) => {
+                        (canvasRef as any).current = el;
+                        if (el && loadedImgRef.current) {
+                          drawWatermark();
+                        }
+                      }}
                       className={cn(
                         "w-full h-auto max-h-[85vh] object-contain rounded-2xl transition-opacity duration-300 border border-slate-100 bg-slate-50/50",
                         !showPreview && "opacity-0"
