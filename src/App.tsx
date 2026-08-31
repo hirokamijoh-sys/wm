@@ -121,6 +121,24 @@ export default function App() {
     reader.readAsDataURL(file);
   };
 
+  const hexToRgba = (hex: string, alpha: number) => {
+    const cleanHex = hex.replace('#', '');
+    let r = 0, g = 0, b = 0;
+    if (cleanHex.length === 6) {
+      r = parseInt(cleanHex.substring(0, 2), 16);
+      g = parseInt(cleanHex.substring(2, 4), 16);
+      b = parseInt(cleanHex.substring(4, 6), 16);
+    } else if (cleanHex.length === 3) {
+      r = parseInt(cleanHex[0] + cleanHex[0], 16);
+      g = parseInt(cleanHex[1] + cleanHex[1], 16);
+      b = parseInt(cleanHex[2] + cleanHex[2], 16);
+    } else if (hex === '#ffffff' || hex === 'white') {
+      r = 255; g = 255; b = 255;
+    }
+    const safeAlpha = Math.max(0.01, Math.min(1.0, alpha));
+    return `rgba(${r}, ${g}, ${b}, ${safeAlpha})`;
+  };
+
   const drawWatermark = () => {
     if (!canvasRef.current) return;
 
@@ -144,36 +162,51 @@ export default function App() {
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
     if (!ctx) return;
 
-    // Set dimensions (this also resets the context state)
-    canvas.width = img.naturalWidth || img.width;
-    canvas.height = img.naturalHeight || img.height;
+    const width = img.naturalWidth || img.width;
+    const height = img.naturalHeight || img.height;
 
-    // Ensure context state is clean
+    // Set dimensions
+    if (canvas.width !== width || canvas.height !== height) {
+      canvas.width = width;
+      canvas.height = height;
+    }
+
+    // Explicitly clear entire canvas to fix Safari / iOS ghosting & alpha stacking
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Reset context state
     ctx.globalAlpha = 1.0;
     ctx.shadowBlur = 0;
     ctx.shadowColor = 'transparent';
     ctx.filter = 'none';
     ctx.globalCompositeOperation = 'source-over';
 
-    // Draw the base image
-    ctx.drawImage(img, 0, 0);
+    // Draw the base original image
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
 
     const textParts = getFinalTextParts();
     
     if (textParts.length > 0) {
-      // Set styles for watermark with exact opacity
-      ctx.globalAlpha = Math.max(0.01, Math.min(1.0, settings.opacity));
-      ctx.fillStyle = settings.color;
-      
+      const safeOpacity = Math.max(0.02, Math.min(1.0, settings.opacity));
       const fontSize = (settings.size / 1000) * canvas.width;
       const lineHeight = fontSize * 1.3; 
+
+      // Apply opacity directly via rgba fillStyle (Safari/iOS compatible) as well as globalAlpha
+      ctx.globalAlpha = safeOpacity;
+      ctx.fillStyle = settings.color;
+      
       ctx.font = `bold ${fontSize}px "Inter", "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Meiryo", sans-serif`;
       ctx.textBaseline = 'middle';
 
-      // Shadow alpha scales directly with opacity so low opacity text is genuinely translucent
-      const shadowAlpha = (settings.color === '#ffffff' ? 0.35 : 0.45) * settings.opacity;
-      ctx.shadowColor = settings.color === '#ffffff' ? `rgba(0,0,0,${shadowAlpha})` : `rgba(255,255,255,${shadowAlpha})`;
-      ctx.shadowBlur = (fontSize / 3) * Math.min(1, settings.opacity * 1.5);
+      // Shadow setup: disabled at low opacities to avoid dark solid halos on Safari
+      if (safeOpacity > 0.25) {
+        const shadowAlpha = (settings.color === '#ffffff' ? 0.3 : 0.35) * safeOpacity;
+        ctx.shadowColor = settings.color === '#ffffff' ? `rgba(0,0,0,${shadowAlpha})` : `rgba(255,255,255,${shadowAlpha})`;
+        ctx.shadowBlur = Math.min(6, (fontSize / 4) * safeOpacity);
+      } else {
+        ctx.shadowColor = 'transparent';
+        ctx.shadowBlur = 0;
+      }
 
       const drawTextBlock = (x: number, y: number, align: CanvasTextAlign = 'center') => {
         ctx.save();
@@ -242,6 +275,8 @@ export default function App() {
 
     if (settings.addNoAiTag) {
       ctx.globalAlpha = 0.015;
+      ctx.shadowColor = 'transparent';
+      ctx.shadowBlur = 0;
       for (let i = 0; i < 300; i++) {
         ctx.fillStyle = i % 2 === 0 ? '#000' : '#fff';
         ctx.fillRect(Math.random() * canvas.width, Math.random() * canvas.height, 1, 1);
@@ -747,8 +782,8 @@ export default function App() {
                   </h2>
                   <div className="space-y-6">
                     <div>
-                      <div className="flex justify-between mb-3">
-                        <label className="text-xs font-bold text-slate-600">Opacity</label>
+                      <div className="flex justify-between items-center mb-2">
+                        <label className="text-xs font-bold text-slate-600">Opacity (不透明度)</label>
                         <span className="text-xs text-sky-600 font-mono font-bold">{Math.round(settings.opacity * 100)}%</span>
                       </div>
                       <input
@@ -757,16 +792,43 @@ export default function App() {
                         max="1"
                         step="0.05"
                         value={settings.opacity}
-                        onChange={(e) => {
-                          setSettings(prev => ({ ...prev, opacity: parseFloat(e.target.value) }));
+                        onInput={(e: any) => {
+                          const val = parseFloat(e.target.value);
+                          setSettings(prev => ({ ...prev, opacity: val }));
                           setShowPreview(true);
                         }}
-                        className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-sky-600"
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value);
+                          setSettings(prev => ({ ...prev, opacity: val }));
+                          setShowPreview(true);
+                        }}
+                        className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-sky-600 touch-pan-x"
                       />
+                      {/* Quick Opacity Presets for touch devices */}
+                      <div className="flex justify-between items-center gap-1.5 mt-2.5">
+                        {[0.15, 0.35, 0.5, 0.75, 1.0].map((presetVal) => (
+                          <button
+                            key={presetVal}
+                            type="button"
+                            onClick={() => {
+                              setSettings(prev => ({ ...prev, opacity: presetVal }));
+                              setShowPreview(true);
+                            }}
+                            className={cn(
+                              "flex-1 py-1 text-[10px] font-bold rounded-lg border transition-all",
+                              Math.abs(settings.opacity - presetVal) < 0.04
+                                ? "bg-sky-600 text-white border-sky-600 shadow-xs"
+                                : "bg-white border-slate-200 text-slate-500 hover:bg-slate-50"
+                            )}
+                          >
+                            {Math.round(presetVal * 100)}%
+                          </button>
+                        ))}
+                      </div>
                     </div>
                     <div>
                       <div className="flex justify-between mb-3">
-                        <label className="text-xs font-bold text-slate-600">Size</label>
+                        <label className="text-xs font-bold text-slate-600">Size (文字サイズ)</label>
                         <span className="text-xs text-sky-600 font-mono font-bold">{settings.size}px</span>
                       </div>
                       <input
@@ -774,11 +836,17 @@ export default function App() {
                         min="10"
                         max="200"
                         value={settings.size}
-                        onChange={(e) => {
-                          setSettings(prev => ({ ...prev, size: parseInt(e.target.value) }));
+                        onInput={(e: any) => {
+                          const val = parseInt(e.target.value);
+                          setSettings(prev => ({ ...prev, size: val }));
                           setShowPreview(true);
                         }}
-                        className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-sky-600"
+                        onChange={(e) => {
+                          const val = parseInt(e.target.value);
+                          setSettings(prev => ({ ...prev, size: val }));
+                          setShowPreview(true);
+                        }}
+                        className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-sky-600 touch-pan-x"
                       />
                     </div>
                     <div className="grid grid-cols-2 gap-4">
